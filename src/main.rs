@@ -37,14 +37,13 @@ fn run_game(
     terminal: &mut DefaultTerminal,
     mut game: TypeGame
 )-> Result<(), Box<dyn Error>> {
-    let mut time_left = 6000;
+    let mut time_left = 60;
 
     let (tx, rx) = mpsc::channel();
     let handle_ch = tx.clone();
     thread::spawn(move || { handle_input(handle_ch) } );
-    let handle_time = tx.clone();
-    thread::spawn(move ||timer(handle_time, time_left));
 
+    let mut timer_started = false;
     let mut redraw = true;
     loop {
         if redraw {
@@ -54,6 +53,11 @@ fn run_game(
         match rx.recv()? {
             TypeGameEvent::KeyPress(keypress) => {
                 redraw = true;
+                if !timer_started {
+                    let handle_time = tx.clone();
+                    //thread::spawn(move || timer(handle_time, time_left));
+                    timer_started = true;
+                }
                 match keypress.code {
                     KeyCode::Char(x) => {game.push(x);}
                     KeyCode::Esc => {return Ok(())}
@@ -86,14 +90,22 @@ fn calculate_stacks(max_width: usize, game: &TypeGame)
             hor_offset += word.letters.len();
         } else if hor_offset + 1 + word.letters.len() > max_width {
             newline_offsets.push(wordnum);
-            if game.cursor > wordnum {
+            if game.cursor >= wordnum {
                 cursor_in_offset_vec += 1;
+                //println!("{cursor_in_offset_vec}");
             }
             hor_offset = word.letters.len();
         } else {
             hor_offset += 1 + word.letters.len()
         }
     }
+
+    //if cursor_in_offset_vec > 0 {
+      //  println!("{:?}", newline_offsets);
+        //println!("{cursor_in_offset_vec}");
+    //}
+
+
     //if there are numbers in newline offsets
     //the first number of newline_offsets denotes the start word of the second line
     //the last number in newline_offsets denotes the start of the last line
@@ -142,7 +154,7 @@ fn calculate_stacks(max_width: usize, game: &TypeGame)
         err_bar_all.append(&mut err_bar);
     };
 
-    //its all contained in the three lines
+    //its all contained in the three lines, or
     if newline_offsets.len() < 3 || game.cursor < newline_offsets[0] {
         //just greedily add the words in
         for (offset, word) in game.words.iter().enumerate() {
@@ -168,12 +180,18 @@ fn calculate_stacks(max_width: usize, game: &TypeGame)
             }
         }
     } else {
-        let first_line_start = newline_offsets[cursor_in_offset_vec - 1];
+        //this is a complete mess, need to go back to drawing board
+
+        let first_line_start = if cursor_in_offset_vec == 1 { 0 } else {
+            newline_offsets[cursor_in_offset_vec - 2]
+        };
+
+        //let first_line_start = newline_offsets[cursor_in_offset_vec - 1];
         for (offset, word) in game.words.iter().enumerate()
             .skip(first_line_start) {
-            if offset < newline_offsets[first_line_start] {
+            if offset < newline_offsets[cursor_in_offset_vec - 1] {
                 word_into_display (offset, word, &mut line1target, &mut line1error);
-            } else if offset < newline_offsets[first_line_start + 1] {
+            } else if offset <  newline_offsets[cursor_in_offset_vec] {
                 word_into_display (offset, word, &mut line2target, &mut line2error);
             } else {
                 word_into_display (offset, word, &mut line3target, &mut line3error);
